@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { Send, Brain, Menu, Sparkles } from "lucide-react";
+import { Send, Brain, Menu, Sparkles, Star } from "lucide-react";
 
 export default function ChatView({ messages, input, loading, onInputChange, onSend, onToggleSidebar }) {
   const bottomRef = useRef(null);
@@ -54,6 +54,12 @@ export default function ChatView({ messages, input, loading, onInputChange, onSe
                 <div className="memory-badge">
                   <Brain size={12} />
                   <span>{msg.memoriesUsed} {msg.memoriesUsed === 1 ? "memory" : "memories"} used</span>
+                </div>
+              )}
+              {msg.role === "assistant" && msg.memoryScore > 0 && (
+                <div className={`score-badge ${msg.memoryStored ? "stored" : "skipped"}`}>
+                  <Star size={12} />
+                  <span>{msg.memoryScore}/5 — {msg.memoryStored ? "saved" : "not saved"}</span>
                 </div>
               )}
               <div className="message-text">{msg.content}</div>

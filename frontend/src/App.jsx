@@ -43,6 +43,8 @@ export default function App() {
           role: "assistant",
           content: data.response,
           memoriesUsed: data.memories_used,
+          memoryScore: data.memory_score,
+          memoryStored: data.memory_stored,
         },
       ]);
       fetchMemories();

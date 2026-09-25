@@ -66,16 +66,55 @@ async def chat(req: ChatRequest):
         )
         assistant_message = response.text
 
-        # Store the conversation in memory
-        messages = [
-            {"role": "user", "content": req.message},
-            {"role": "assistant", "content": assistant_message},
-        ]
-        memory.add(messages, user_id=req.user_id)
+        # Rate the conversation for usefulness before storing
+        rating_prompt = f"""Rate the following conversation for long-term usefulness on a scale of 1 to 5.
+
+1 = Generic/trivial (e.g. "hi", "thanks", "ok")
+2 = Low value small talk
+3 = Somewhat useful context
+4 = Useful personal info, preference, or insight worth remembering
+5 = Highly valuable — key facts, goals, expertise, or important context
+
+Conversation:
+User: {req.message}
+Assistant: {assistant_message}
+
+Respond with ONLY a single JSON object: {{"score": <number>, "reason": "<brief reason>"}}"""
+
+        rating_response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=rating_prompt,
+        )
+
+        score = 0
+        reason = ""
+        try:
+            rating_text = rating_response.text.strip()
+            # Strip markdown code fences if present
+            if rating_text.startswith("```"):
+                rating_text = rating_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            rating_data = json.loads(rating_text)
+            score = int(rating_data.get("score", 0))
+            reason = rating_data.get("reason", "")
+        except (json.JSONDecodeError, ValueError):
+            score = 3
+
+        # Only store memories rated 4 or above
+        stored = False
+        if score >= 4:
+            messages = [
+                {"role": "user", "content": req.message},
+                {"role": "assistant", "content": assistant_message},
+            ]
+            memory.add(messages, user_id=req.user_id)
+            stored = True
 
         return {
             "response": assistant_message,
             "memories_used": len(memories_list) if memory_context else 0,
+            "memory_score": score,
+            "memory_stored": stored,
+            "score_reason": reason,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
