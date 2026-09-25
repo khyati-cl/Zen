@@ -1,6 +1,6 @@
-import { Brain, Trash2, RefreshCw, X } from "lucide-react";
+import { Brain, Trash2, RefreshCw, X, LogOut } from "lucide-react";
 
-export default function Sidebar({ open, onToggle, memories, onDeleteMemory, onClearMemories, onRefresh }) {
+export default function Sidebar({ open, onToggle, memories, onDeleteMemory, onClearMemories, onRefresh, user, onLogout }) {
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={onToggle} />}
@@ -49,6 +49,19 @@ export default function Sidebar({ open, onToggle, memories, onDeleteMemory, onCl
             </button>
           </div>
         )}
+
+        <div className="sidebar-user">
+          <div className="user-info">
+            <div className="user-avatar">{user?.name?.[0]?.toUpperCase() || "?"}</div>
+            <div className="user-details">
+              <span className="user-name">{user?.name}</span>
+              <span className="user-email">{user?.email}</span>
+            </div>
+          </div>
+          <button className="icon-btn small" onClick={onLogout} title="Sign out">
+            <LogOut size={16} />
+          </button>
+        </div>
       </aside>
     </>
   );

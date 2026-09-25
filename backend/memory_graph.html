@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zen - Memory Graph</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+    background: rgba(17, 17, 17, 0.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid #222;
+  }
+  #header h1 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  #header h1 span { color: #7c5cfc; }
+  .stats {
+    display: flex; gap: 16px; font-size: 12px; color: #888;
+  }
+  .stats b { color: #e0e0e0; }
+  .legend { display: flex; gap: 14px; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  #graph { width: 100%; height: 100vh; }
+
+  /* Detail panel */
+  #panel {
+    position: fixed; right: -420px; top: 0; bottom: 0; width: 400px;
+    background: #111; border-left: 1px solid #222; z-index: 30;
+    transition: right 0.25s ease;
+    display: flex; flex-direction: column;
+  }
+  #panel.open { right: 0; }
+  #panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid #222;
+  }
+  #panel-header h2 { font-size: 14px; font-weight: 600; }
+  #close-btn {
+    background: none; border: none; color: #888; cursor: pointer;
+    font-size: 20px; line-height: 1;
+  }
+  #close-btn:hover { color: #fff; }
+  #panel-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+  .detail-label {
+    font-size: 11px; color: #555; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 16px;
+  }
+  .detail-label:first-child { margin-top: 0; }
+  .detail-text { font-size: 14px; line-height: 1.7; color: #e0e0e0; }
+  .detail-meta { font-size: 12px; color: #888; }
+  .type-badge {
+    display: inline-block; font-size: 11px; padding: 3px 10px;
+    border-radius: 10px; font-weight: 500;
+  }
+  .type-badge.fact { color: #60a5fa; background: rgba(96,165,250,0.12); }
+  .type-badge.lesson { color: #4ade80; background: rgba(74,222,128,0.12); }
+
+  .kw-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .kw {
+    font-size: 11px; padding: 2px 8px; border-radius: 8px;
+    background: #1a1a1a; border: 1px solid #333; color: #aaa;
+  }
+
+  .connected-title { font-size: 13px; font-weight: 500; margin-top: 20px; margin-bottom: 8px; }
+  .connected-item {
+    font-size: 12px; color: #aaa; padding: 8px 10px; margin-bottom: 4px;
+    background: #1a1a1a; border-radius: 6px; border: 1px solid #222;
+    cursor: pointer; transition: border-color 0.2s;
+  }
+  .connected-item:hover { border-color: #444; }
+  .shared-words { font-size: 10px; color: #555; margin-top: 2px; }
+
+  /* Live indicator */
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #4ade80; display: inline-block;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* New node animation */
+  .node-new { animation: pop 0.6s ease; }
+  @keyframes pop {
+    0% { r: 0; opacity: 0; }
+    50% { r: 14; }
+    100% { r: 8; opacity: 1; }
+  }
+
+  /* Empty state */
+  .empty-state {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; color: #555; z-index: 10;
+  }
+  .empty-state h2 { font-size: 20px; color: #888; margin-bottom: 8px; }
+  .empty-state p { font-size: 14px; color: #555; }
+
+  /* Error state */
+  .error-banner {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444;
+    color: #ef4444; padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; z-index: 40; display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1><span>&#10024;</span> Zen Memory Graph</h1>
+  <div class="stats">
+    <span><b id="node-count">0</b> memories</span>
+    <span><b id="edge-count">0</b> connections</span>
+    <span class="live-dot"></span> <span>Live</span>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> Fact</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div> Lesson</div>
+  </div>
+</div>
+
+<svg id="graph"></svg>
+<div id="empty-state" class="empty-state" style="display:none">
+  <h2>No memories yet</h2>
+  <p>Start chatting with Zen to build your memory graph</p>
+</div>
+<div id="error-banner" class="error-banner"></div>
+
+<div id="panel">
+  <div id="panel-header">
+    <h2>Memory Detail</h2>
+    <button id="close-btn">&times;</button>
+  </div>
+  <div id="panel-body"></div>
+</div>
+
+<script>
+if (typeof d3 === "undefined") {
+  document.getElementById("error-banner").textContent = "Failed to load D3.js library. Check your internet connection.";
+  document.getElementById("error-banner").style.display = "block";
+}
+const API = location.origin;
+const TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("zen_token") || "";
+const AUTH = { "Authorization": `Bearer ${TOKEN}` };
+
+const COLORS = { fact: "#60a5fa", lesson: "#4ade80" };
+const width = window.innerWidth;
+const height = window.innerHeight;
+
+const svg = d3.select("#graph")
+  .attr("width", width).attr("height", height);
+
+// Zoom
+const g = svg.append("g");
+svg.call(d3.zoom().scaleExtent([0.2, 5]).on("zoom", (e) => g.attr("transform", e.transform)));
+
+const linkGroup = g.append("g").attr("class", "links");
+const nodeGroup = g.append("g").attr("class", "nodes");
+const labelGroup = g.append("g").attr("class", "labels");
+
+const simulation = d3.forceSimulation()
+  .force("link", d3.forceLink().id(d => d.id).distance(120).strength(d => Math.min(d.weight * 0.15, 0.8)))
+  .force("charge", d3.forceManyBody().strength(-200))
+  .force("center", d3.forceCenter(width / 2, height / 2))
+  .force("collision", d3.forceCollide().radius(30));
+
+let currentNodes = [];
+let currentEdges = [];
+let knownIds = new Set();
+
+function truncate(s, n) { return s.length > n ? s.slice(0, n) + "..." : s; }
+
+function render(nodes, edges) {
+  currentNodes = nodes;
+  currentEdges = edges;
+
+  document.getElementById("node-count").textContent = nodes.length;
+  document.getElementById("edge-count").textContent = edges.length;
+
+  // Links
+  const link = linkGroup.selectAll("line").data(edges, d => d.source.id ? `${d.source.id}-${d.target.id}` : `${d.source}-${d.target}`);
+  link.exit().remove();
+  const linkEnter = link.enter().append("line")
+    .attr("stroke", "#333")
+    .attr("stroke-width", d => Math.min(d.weight * 0.5, 3))
+    .attr("stroke-opacity", 0.5);
+  const linkMerge = linkEnter.merge(link);
+
+  // Nodes
+  const node = nodeGroup.selectAll("circle").data(nodes, d => d.id);
+  node.exit().transition().duration(300).attr("r", 0).remove();
+  const nodeEnter = node.enter().append("circle")
+    .attr("r", 0)
+    .attr("fill", d => COLORS[d.type] || COLORS.fact)
+    .attr("stroke", d => d3.color(COLORS[d.type] || COLORS.fact).darker(0.5))
+    .attr("stroke-width", 1.5)
+    .attr("cursor", "pointer")
+    .on("click", (e, d) => showDetail(d))
+    .call(d3.drag()
+      .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  nodeEnter.each(function(d) {
+    if (!knownIds.has(d.id)) {
+      d3.select(this).classed("node-new", true);
+      knownIds.add(d.id);
+    }
+  });
+
+  nodeEnter.transition().duration(400).attr("r", 8);
+  const nodeMerge = nodeEnter.merge(node);
+
+  // Hover
+  nodeMerge
+    .on("mouseenter", function(e, d) {
+      d3.select(this).transition().duration(150).attr("r", 12);
+      // Highlight connected
+      const connIds = new Set();
+      edges.forEach(edge => {
+        const src = edge.source.id || edge.source;
+        const tgt = edge.target.id || edge.target;
+        if (src === d.id) connIds.add(tgt);
+        if (tgt === d.id) connIds.add(src);
+      });
+      nodeMerge.attr("opacity", n => n.id === d.id || connIds.has(n.id) ? 1 : 0.2);
+      linkMerge.attr("stroke-opacity", l => {
+        const src = l.source.id || l.source;
+        const tgt = l.target.id || l.target;
+        return src === d.id || tgt === d.id ? 0.8 : 0.05;
+      });
+    })
+    .on("mouseleave", function() {
+      d3.select(this).transition().duration(150).attr("r", 8);
+      nodeMerge.attr("opacity", 1);
+      linkMerge.attr("stroke-opacity", 0.5);
+    });
+
+  // Labels
+  const label = labelGroup.selectAll("text").data(nodes, d => d.id);
+  label.exit().remove();
+  const labelEnter = label.enter().append("text")
+    .attr("font-size", 10)
+    .attr("fill", "#666")
+    .attr("text-anchor", "middle")
+    .attr("dy", -14)
+    .attr("pointer-events", "none")
+    .text(d => truncate(d.memory, 24));
+  const labelMerge = labelEnter.merge(label);
+
+  // Simulation
+  simulation.nodes(nodes).on("tick", () => {
+    linkMerge
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    nodeMerge.attr("cx", d => d.x).attr("cy", d => d.y);
+    labelMerge.attr("x", d => d.x).attr("y", d => d.y);
+  });
+
+  simulation.force("link").links(edges);
+  simulation.alpha(0.5).restart();
+}
+
+function showDetail(d) {
+  const panel = document.getElementById("panel");
+  const body = document.getElementById("panel-body");
+
+  // Find connected
+  const connected = [];
+  currentEdges.forEach(e => {
+    const src = e.source.id || e.source;
+    const tgt = e.target.id || e.target;
+    if (src === d.id) connected.push({ node: currentNodes.find(n => n.id === tgt), shared: e.shared });
+    if (tgt === d.id) connected.push({ node: currentNodes.find(n => n.id === src), shared: e.shared });
+  });
+
+  body.innerHTML = `
+    <div class="detail-label">Type</div>
+    <span class="type-badge ${d.type}">${d.type}</span>
+
+    <div class="detail-label">Memory</div>
+    <div class="detail-text">${d.memory}</div>
+
+    <div class="detail-label">Created</div>
+    <div class="detail-meta">${d.created_at ? new Date(d.created_at).toLocaleString() : "Unknown"}</div>
+
+    <div class="detail-label">Last Updated</div>
+    <div class="detail-meta">${d.updated_at ? new Date(d.updated_at).toLocaleString() : "Unknown"}</div>
+
+    <div class="detail-label">Keywords</div>
+    <div class="kw-list">${d.keywords.slice(0, 12).map(k => `<span class="kw">${k}</span>`).join("")}</div>
+
+    <div class="detail-label">ID</div>
+    <div class="detail-meta" style="font-family:monospace;font-size:11px;word-break:break-all">${d.id}</div>
+
+    ${connected.length ? `
+      <div class="connected-title">Connected Memories (${connected.length})</div>
+      ${connected.map(c => c.node ? `
+        <div class="connected-item" onclick="highlightNode('${c.node.id}')">
+          ${truncate(c.node.memory, 60)}
+          <div class="shared-words">Shared: ${c.shared.join(", ")}</div>
+        </div>
+      ` : "").join("")}
+    ` : ""}
+  `;
+
+  panel.classList.add("open");
+}
+
+window.highlightNode = function(id) {
+  const node = currentNodes.find(n => n.id === id);
+  if (node) showDetail(node);
+};
+
+document.getElementById("close-btn").onclick = () => {
+  document.getElementById("panel").classList.remove("open");
+};
+
+// Fetch and poll
+async function fetchGraph() {
+  const emptyEl = document.getElementById("empty-state");
+  const errorEl = document.getElementById("error-banner");
+  try {
+    const res = await fetch(`${API}/memory-graph`, { headers: AUTH });
+    if (!res.ok) {
+      const detail = await res.text();
+      console.error("API error:", res.status, detail);
+      errorEl.textContent = `Auth error (${res.status}). Please go back and reopen the graph.`;
+      errorEl.style.display = "block";
+      return;
+    }
+    errorEl.style.display = "none";
+    const data = await res.json();
+    if (data.nodes.length === 0) {
+      emptyEl.style.display = "block";
+    } else {
+      emptyEl.style.display = "none";
+      render(data.nodes, data.edges);
+    }
+  } catch (e) {
+    console.error("Fetch error:", e);
+    errorEl.textContent = `Connection error: ${e.message}`;
+    errorEl.style.display = "block";
+  }
+}
+
+fetchGraph();
+setInterval(fetchGraph, 5000); // poll every 5s for live updates
+</script>
+</body>
+</html>

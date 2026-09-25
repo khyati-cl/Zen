@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
-import { Send, Brain, Menu, Sparkles, Star } from "lucide-react";
+import { Send, Brain, Menu, Sparkles, Star, Globe, FileText, Code, Network, X, Lightbulb } from "lucide-react";
 
-export default function ChatView({ messages, input, loading, onInputChange, onSend, onToggleSidebar }) {
+export default function ChatView({ messages, input, loading, onInputChange, onSend, onToggleSidebar, onDismissNudge }) {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -26,6 +26,15 @@ export default function ChatView({ messages, input, loading, onInputChange, onSe
           <Sparkles size={18} />
           <span>Zen Agent</span>
         </div>
+        <a
+          className="graph-btn"
+          href={`http://localhost:8000/graph?token=${localStorage.getItem("zen_token") || ""}`}
+          target="_blank"
+          title="Memory Graph"
+        >
+          <Network size={16} />
+          <span>Graph</span>
+        </a>
         <div className="header-badge">Gemini + mem0</div>
       </header>
 
@@ -48,18 +57,51 @@ export default function ChatView({ messages, input, loading, onInputChange, onSe
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            <div className="message-bubble">
-              {msg.role === "assistant" && msg.memoriesUsed > 0 && (
-                <div className="memory-badge">
-                  <Brain size={12} />
-                  <span>{msg.memoriesUsed} {msg.memoriesUsed === 1 ? "memory" : "memories"} used</span>
+          <div key={i} className={`message ${msg.role} ${msg.isNudge ? "nudge" : ""}`}>
+            <div className={`message-bubble ${msg.isNudge ? "nudge-bubble" : ""}`}>
+              {msg.isNudge && (
+                <div className="nudge-header">
+                  <div className="nudge-label">
+                    <Lightbulb size={13} />
+                    <span>Memory Nudge</span>
+                  </div>
+                  <button
+                    className="nudge-dismiss"
+                    onClick={() => onDismissNudge(msg.nudgeId)}
+                    title="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               )}
-              {msg.role === "assistant" && msg.memoryScore > 0 && (
-                <div className={`score-badge ${msg.memoryStored ? "stored" : "skipped"}`}>
-                  <Star size={12} />
-                  <span>{msg.memoryScore}/5 — {msg.memoryStored ? "saved" : "not saved"}</span>
+              {msg.role === "assistant" && !msg.isNudge && (msg.memoriesUsed > 0 || msg.toolsUsed?.length > 0 || msg.memoryScore > 0) && (
+                <div className="badge-row">
+                  {msg.toolsUsed?.length > 0 && (
+                    <div className="tool-badge">
+                      {msg.toolsUsed.map((t, j) => {
+                        const Icon = t === "web_search" ? Globe : t === "read_file" ? FileText : Code;
+                        const label = t === "web_search" ? "Web Search" : t === "read_file" ? "File Reader" : "Code Runner";
+                        return (
+                          <span key={j} className="tool-tag">
+                            <Icon size={12} />
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {msg.memoriesUsed > 0 && (
+                    <div className="memory-badge">
+                      <Brain size={12} />
+                      <span>{msg.memoriesUsed} {msg.memoriesUsed === 1 ? "memory" : "memories"}</span>
+                    </div>
+                  )}
+                  {msg.memoryScore > 0 && (
+                    <div className={`score-badge ${msg.memoryStored ? "stored" : "skipped"}`}>
+                      <Star size={12} />
+                      <span>{msg.memoryScore}/5</span>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="message-text">{msg.content}</div>
