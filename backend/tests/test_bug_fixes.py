@@ -241,7 +241,8 @@ class TestBug6_NaiveDatetime:
 
     def test_no_naive_datetime_now_in_nudge(self):
         """get_nudge must not call bare datetime.now() without timezone."""
-        import inspect, re
+        import inspect
+        import re
         from main import get_nudge
         source = inspect.getsource(get_nudge)
         # Find all datetime.now() calls — they should all have timezone.utc
@@ -424,8 +425,8 @@ class TestDeadImportsRemoved:
         with open(main_path) as f:
             source = f.read()
         # Check import lines specifically
-        import_lines = [l.strip() for l in source.split('\n') if l.strip().startswith('import ') or l.strip().startswith('from ')]
-        traceback_imported = any('traceback' in l for l in import_lines)
+        import_lines = [line.strip() for line in source.split('\n') if line.strip().startswith('import ') or line.strip().startswith('from ')]
+        traceback_imported = any('traceback' in line for line in import_lines)
         assert not traceback_imported, (
             "'traceback' is imported but never used (dead import)"
         )
@@ -435,8 +436,8 @@ class TestDeadImportsRemoved:
         main_path = os.path.join(os.path.dirname(__file__), "..", "main.py")
         with open(main_path) as f:
             source = f.read()
-        import_lines = [l.strip() for l in source.split('\n') if l.strip().startswith('import ') or l.strip().startswith('from ')]
-        counter_imported = any('Counter' in l for l in import_lines)
+        import_lines = [line.strip() for line in source.split('\n') if line.strip().startswith('import ') or line.strip().startswith('from ')]
+        counter_imported = any('Counter' in line for line in import_lines)
         assert not counter_imported, (
             "'Counter' is imported but never used (dead import)"
         )
@@ -446,8 +447,8 @@ class TestDeadImportsRemoved:
         main_path = os.path.join(os.path.dirname(__file__), "..", "main.py")
         with open(main_path) as f:
             source = f.read()
-        import_lines = [l.strip() for l in source.split('\n') if l.strip().startswith('import ') or l.strip().startswith('from ')]
-        optional_imported = any('Optional' in l for l in import_lines)
+        import_lines = [line.strip() for line in source.split('\n') if line.strip().startswith('import ') or line.strip().startswith('from ')]
+        optional_imported = any('Optional' in line for line in import_lines)
         assert not optional_imported, (
             "'Optional' from typing is imported but never used (dead import)"
         )

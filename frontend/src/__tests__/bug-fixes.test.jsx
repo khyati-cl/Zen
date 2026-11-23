@@ -12,11 +12,9 @@
  *  17.  Unused catch parameters (catch(e) where e is never used)
  *  16.  Unused react-router-dom dependency
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import React from 'react'
 
 
 // ---------------------------------------------------------------------------
@@ -40,11 +38,6 @@ describe('Bug 9: Temporal dead zone in App.jsx', () => {
     // Find the line where handleLogout is declared
     const handleLogoutDeclLine = lines.findIndex(l =>
       l.includes('handleLogout') && (l.includes('const') || l.includes('function'))
-    )
-
-    // Find the first useEffect that references handleLogout
-    const useEffectWithLogout = lines.findIndex(l =>
-      l.includes('useEffect') && lines.slice(l).some(sl => sl.includes('handleLogout'))
     )
 
     // handleLogout declaration must come BEFORE the useEffect
@@ -219,8 +212,6 @@ describe('Bug 17: Unused catch parameters', () => {
       source.indexOf('sendMessage'),
       source.indexOf('deleteMemory')
     )
-    // Should not have catch(e) or catch (e) where e is unused
-    const catchBlocks = sendMsgSection.match(/catch\s*\(\s*\w+\s*\)\s*\{/g) || []
     // The main catch in sendMessage should be bare (no parameter)
     // There might be other catches with used params, so check specifically
     // for the "Something went wrong" catch
