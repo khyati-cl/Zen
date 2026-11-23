@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import ChatView from "./components/ChatView";
 import Sidebar from "./components/Sidebar";
 import AuthPage from "./components/AuthPage";
@@ -25,15 +25,30 @@ export default function App() {
   const [memories, setMemories] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const handleAuth = (newToken, newUser) => {
+    setToken(newToken);
+    setUser(newUser);
+  };
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("zen_token");
+    localStorage.removeItem("zen_user");
+    setToken(null);
+    setUser(null);
+    setMessages([]);
+    setMemories([]);
+  }, []);
+
   // Verify token on mount and fetch nudge
   useEffect(() => {
-    if (token) {
-      fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    const savedToken = localStorage.getItem("zen_token");
+    if (savedToken) {
+      fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${savedToken}` } })
         .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
         .then((data) => {
           setUser(data.user);
           // Fetch proactive nudge after auth verified
-          return fetch(`${API}/nudge`, { headers: authHeaders(token) });
+          return fetch(`${API}/nudge`, { headers: authHeaders(savedToken) });
         })
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
@@ -48,23 +63,9 @@ export default function App() {
         })
         .catch(() => handleLogout());
     }
-  }, []);
+  }, [handleLogout]);
 
-  const handleAuth = (newToken, newUser) => {
-    setToken(newToken);
-    setUser(newUser);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("zen_token");
-    localStorage.removeItem("zen_user");
-    setToken(null);
-    setUser(null);
-    setMessages([]);
-    setMemories([]);
-  };
-
-  const fetchMemories = async () => {
+  const fetchMemories = useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API}/memories`, { headers: authHeaders(token) });
@@ -74,7 +75,7 @@ export default function App() {
     } catch (e) {
       console.error("Failed to fetch memories:", e);
     }
-  };
+  }, [token, handleLogout]);
 
   const sendMessage = async () => {
     if (!input.trim() || loading || !token) return;
@@ -109,7 +110,7 @@ export default function App() {
         },
       ]);
       fetchMemories();
-    } catch (e) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Something went wrong. Is the backend running?" },
@@ -154,7 +155,7 @@ export default function App() {
 
   useEffect(() => {
     if (token) fetchMemories();
-  }, [token]);
+  }, [token, fetchMemories]);
 
   if (!token) {
     return <AuthPage onAuth={handleAuth} />;

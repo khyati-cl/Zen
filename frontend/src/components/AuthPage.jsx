@@ -37,7 +37,7 @@ export default function AuthPage({ onAuth }) {
       localStorage.setItem("zen_token", data.token);
       localStorage.setItem("zen_user", JSON.stringify(data.user));
       onAuth(data.token, data.user);
-    } catch (e) {
+    } catch {
       setError("Cannot connect to server");
     } finally {
       setLoading(false);

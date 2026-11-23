@@ -28,7 +28,7 @@ export default function ChatView({ messages, input, loading, onInputChange, onSe
         </div>
         <a
           className="graph-btn"
-          href={`http://localhost:8000/graph?token=${localStorage.getItem("zen_token") || ""}`}
+          href="http://localhost:8000/graph"
           target="_blank"
           title="Memory Graph"
         >
