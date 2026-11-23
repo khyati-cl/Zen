@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import sqlite3
 import subprocess
@@ -33,7 +34,7 @@ NUDGE_LOOKBACK_DAYS = int(os.getenv("NUDGE_LOOKBACK_DAYS", "7"))
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 PRIMARY_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-3.5-flash-lite"
+FALLBACK_MODEL = "gemini-2.0-flash-lite"
 
 
 def gemini_generate(contents, tools=None, model=None):
@@ -161,19 +162,20 @@ async def signup(req: SignupRequest):
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
     conn = get_db()
-    existing = conn.execute("SELECT id FROM users WHERE email = ?", (req.email.lower(),)).fetchone()
-    if existing:
-        conn.close()
-        raise HTTPException(status_code=409, detail="Email already registered")
+    try:
+        existing = conn.execute("SELECT id FROM users WHERE email = ?", (req.email.lower(),)).fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail="Email already registered")
 
-    hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
-    cursor = conn.execute(
-        "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-        (req.name.strip(), req.email.lower().strip(), hashed),
-    )
-    conn.commit()
-    user_id = cursor.lastrowid
-    conn.close()
+        hashed = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+        cursor = conn.execute(
+            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+            (req.name.strip(), req.email.lower().strip(), hashed),
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+    finally:
+        conn.close()
 
     token = create_token(user_id, req.email.lower(), req.name.strip())
     return {"token": token, "user": {"id": user_id, "name": req.name.strip(), "email": req.email.lower()}}
@@ -182,8 +184,10 @@ async def signup(req: SignupRequest):
 @app.post("/auth/login")
 async def login(req: LoginRequest):
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE email = ?", (req.email.lower(),)).fetchone()
-    conn.close()
+    try:
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (req.email.lower(),)).fetchone()
+    finally:
+        conn.close()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -280,18 +284,18 @@ def execute_read_file(file_path: str) -> str:
 
 
 def execute_run_code(code: str) -> str:
+    tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(code)
             tmp_path = f.name
         result = subprocess.run(
-            ["/opt/homebrew/bin/python3.12", tmp_path],
+            [sys.executable, tmp_path],
             capture_output=True,
             text=True,
             timeout=15,
             cwd=tempfile.gettempdir(),
         )
-        os.unlink(tmp_path)
         output = result.stdout
         if result.stderr:
             output += f"\nSTDERR:\n{result.stderr}"
@@ -300,6 +304,9 @@ def execute_run_code(code: str) -> str:
         return "Error: Code execution timed out (15s limit)"
     except Exception as e:
         return f"Execution error: {str(e)}"
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 TOOL_EXECUTORS = {
@@ -339,6 +346,9 @@ def run_agent_loop(prompt: str, memory_context: str) -> tuple[str, list[dict]]:
     # Agent loop — keep going until Gemini gives a text response
     for _ in range(5):  # max 5 tool call rounds
         response = gemini_generate(contents, tools=tool_definitions)
+
+        if not response.candidates:
+            return "I couldn't generate a response. Please try again.", tools_used
 
         # Check if the model wants to call functions
         function_calls = []
@@ -482,8 +492,17 @@ async def get_memories(payload: dict = Depends(verify_token)):
 @app.delete("/memories/{memory_id}")
 async def delete_memory(memory_id: str, payload: dict = Depends(verify_token)):
     try:
+        user_id = payload["email"]
+        # Verify the memory belongs to the requesting user before deleting
+        all_memories = memory.get_all(filters={"user_id": user_id})
+        results = all_memories.get("results", all_memories) if isinstance(all_memories, dict) else all_memories
+        user_memory_ids = {m.get("id") for m in results if "id" in m}
+        if memory_id not in user_memory_ids:
+            raise HTTPException(status_code=404, detail="Memory not found")
         memory.delete(memory_id)
         return {"status": "deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -624,11 +643,13 @@ async def get_nudge(payload: dict = Depends(verify_token)):
 
     # Get already-addressed nudge memory IDs for this user
     conn = get_db()
-    addressed_rows = conn.execute(
-        "SELECT memory_id FROM nudges WHERE user_email = ? AND addressed = 1",
-        (user_id,),
-    ).fetchall()
-    conn.close()
+    try:
+        addressed_rows = conn.execute(
+            "SELECT memory_id FROM nudges WHERE user_email = ? AND addressed = 1",
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
     addressed_ids = {r["memory_id"] for r in addressed_rows}
 
     # Filter out memories that already had their nudge addressed
@@ -643,7 +664,7 @@ async def get_nudge(payload: dict = Depends(verify_token)):
 
     nudge_prompt = f"""You are reviewing a user's recent memories to see if any relate to something time-sensitive or unresolved that deserves a proactive follow-up.
 
-Today's date: {datetime.now().strftime("%A, %B %d, %Y")}
+Today's date: {datetime.now(timezone.utc).strftime("%A, %B %d, %Y")}
 
 Recent memories:
 {memories_text}
@@ -681,9 +702,12 @@ Respond with ONLY the JSON object, no markdown or explanation."""
                 "SELECT id FROM nudges WHERE user_email = ? AND memory_id = ? AND addressed = 0",
                 (user_id, data["memory_id"]),
             ).fetchone()
-            conn.close()
         except Exception:
+            row = None
+        finally:
             conn.close()
+
+        if row is None:
             return {"nudge": data["nudge"], "nudge_id": None, "memory_id": data["memory_id"]}
 
         return {
@@ -701,12 +725,14 @@ Respond with ONLY the JSON object, no markdown or explanation."""
 async def dismiss_nudge(nudge_id: int, payload: dict = Depends(verify_token)):
     user_id = payload["email"]
     conn = get_db()
-    conn.execute(
-        "UPDATE nudges SET addressed = 1 WHERE id = ? AND user_email = ?",
-        (nudge_id, user_id),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            "UPDATE nudges SET addressed = 1 WHERE id = ? AND user_email = ?",
+            (nudge_id, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return {"status": "dismissed"}
 
 
