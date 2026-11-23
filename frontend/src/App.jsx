@@ -110,7 +110,7 @@ export default function App() {
         },
       ]);
       fetchMemories();
-    } catch (e) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Something went wrong. Is the backend running?" },

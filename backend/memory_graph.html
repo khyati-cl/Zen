@@ -156,7 +156,7 @@ if (typeof d3 === "undefined") {
   document.getElementById("error-banner").style.display = "block";
 }
 const API = location.origin;
-const TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("zen_token") || "";
+const TOKEN = localStorage.getItem("zen_token") || "";
 const AUTH = { "Authorization": `Bearer ${TOKEN}` };
 
 const COLORS = { fact: "#60a5fa", lesson: "#4ade80" };

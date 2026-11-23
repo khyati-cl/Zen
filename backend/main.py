@@ -5,17 +5,14 @@ import sqlite3
 import subprocess
 import tempfile
 import time
-import traceback
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import re
-from collections import Counter
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import Optional
 from google import genai
 from google.genai import types
 from mem0 import MemoryClient
@@ -28,7 +25,9 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MEM0_API_KEY = os.getenv("MEM0_API_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET", "zen-secret-key-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required. Set it to a random secret string.")
 NUDGE_ENABLED = os.getenv("NUDGE_ENABLED", "true").lower() in ("true", "1", "yes")
 NUDGE_LOOKBACK_DAYS = int(os.getenv("NUDGE_LOOKBACK_DAYS", "7"))
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -268,9 +267,15 @@ def execute_web_search(query: str) -> str:
         return f"Search error: {str(e)}"
 
 
+ALLOWED_READ_DIR = os.getenv("ZEN_ALLOWED_READ_DIR", os.path.expanduser("~"))
+
+
 def execute_read_file(file_path: str) -> str:
     try:
         resolved = os.path.realpath(file_path)
+        allowed = os.path.realpath(ALLOWED_READ_DIR)
+        if not resolved.startswith(allowed + os.sep) and resolved != allowed:
+            return f"Access denied: path is outside the allowed directory."
         if not os.path.isfile(resolved):
             return f"File not found: {file_path}"
         size = os.path.getsize(resolved)
