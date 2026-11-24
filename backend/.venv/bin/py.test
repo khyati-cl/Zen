@@ -1,0 +1,8 @@
+#!/workspaces/6ad5bd03d6c6fa65d908579f_cohort_6b0049e886302a9edd92973f/Zen/backend/.venv/bin/python3.11
+# -*- coding: utf-8 -*-
+import re
+import sys
+from _pytest.config import _console_main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    sys.exit(_console_main())
